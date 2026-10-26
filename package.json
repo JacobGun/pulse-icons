@@ -1,0 +1,11 @@
+{
+  "name": "pulse-icons-workspace",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "icons:export": "node scripts/export-icons.mjs",
+    "icons:web": "node scripts/build-web-icons.mjs",
+    "icons:update": "npm run icons:export && npm run icons:web",
+    "icons:pack": "npm pack ./packages/web"
+  }
+}
