@@ -1,0 +1,15 @@
+{
+  "name": "@pulse/icons",
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Pulse custom icons for web applications.",
+  "peerDependencies": {
+    "@pulse/web": "*"
+  },
+  "exports": {
+    "./alerts/*": "./src/alerts/*.js"
+  },
+  "files": [
+    "src"
+  ]
+}
