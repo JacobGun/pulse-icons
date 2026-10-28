@@ -70,6 +70,49 @@ function normalizeSvg(rawSvg) {
     .replaceAll('fill="#000"', 'fill="currentColor"');
 }
 
+function validateSvg(svg, iconName) {
+  const viewBoxMatch = svg.match(
+    /<svg\b[^>]*\bviewBox="([^"]+)"[^>]*>/i
+  );
+
+  if (!viewBoxMatch) {
+    throw new Error(`Icon "${iconName}" is missing an SVG viewBox.`);
+  }
+
+  if (viewBoxMatch[1].trim() !== "0 0 24 24") {
+    throw new Error(
+      `Icon "${iconName}" has unsupported viewBox "${viewBoxMatch[1]}". ` +
+        `Expected "0 0 24 24".`
+    );
+  }
+
+  const paths = svg.match(/<path\b[^>]*>/gi) ?? [];
+
+  if (paths.length === 0) {
+    throw new Error(
+      `Icon "${iconName}" must contain at least one SVG path.`
+    );
+  }
+
+  const unsupportedElements = [
+    "script",
+    "image",
+    "text",
+    "foreignObject",
+    "use",
+  ];
+
+  for (const element of unsupportedElements) {
+    const pattern = new RegExp(`<${element}\\b`, "i");
+
+    if (pattern.test(svg)) {
+      throw new Error(
+        `Icon "${iconName}" contains unsupported <${element}> content.`
+      );
+    }
+  }
+}
+
 async function figmaRequest(url) {
   const response = await fetch(url, {
     headers: {
@@ -153,19 +196,7 @@ const expectedSvgPaths = new Set(
   )
 );
 
-const existingSvgPaths = await findFiles(outputRoot, ".svg");
-  for (const existingPath of existingSvgPaths) {
-    if (!expectedSvgPaths.has(path.resolve(existingPath))) {
-      await fs.unlink(existingPath);
 
-      console.log(
-        `Removed stale icon -> ${path.relative(
-          process.cwd(),
-          existingPath
-        )}`
-      );
-    }
-  }
 
 const duplicateNames = icons
   .map((icon) => icon.name)
@@ -194,6 +225,8 @@ const imagesResponse = await figmaRequest(
 
 const imagesResult = await imagesResponse.json();
 
+const validatedIcons = [];
+
 for (const icon of icons) {
   const svgUrl = imagesResult.images?.[icon.id];
 
@@ -213,20 +246,48 @@ for (const icon of icons) {
   }
 
   const rawSvg = await svgResponse.text();
+
   const svg = normalizeSvg(rawSvg);
 
-  const outputPath = path.join(
-    outputRoot,
-    ...icon.pathParts.slice(0, -1),
-    `${icon.pathParts.at(-1)}.svg`
-  );
+  validateSvg(svg, icon.name);
 
-  await fs.mkdir(path.dirname(outputPath), { recursive: true });
-  await fs.writeFile(outputPath, svg, "utf8");
+
+  validatedIcons.push({
+    ...icon,
+    svg,
+    outputPath: path.join(
+      outputRoot,
+      ...icon.pathParts.slice(0, -1),
+      `${icon.pathParts.at(-1)}.svg`
+    ),
+  });
+}
+
+const existingSvgPaths = await findFiles(outputRoot, ".svg");
+
+for (const existingPath of existingSvgPaths) {
+  if (!expectedSvgPaths.has(path.resolve(existingPath))) {
+    await fs.unlink(existingPath);
+
+    console.log(
+      `Removed stale icon -> ${path.relative(
+        process.cwd(),
+        existingPath
+      )}`
+    );
+  }
+}
+
+for (const icon of validatedIcons) {
+  await fs.mkdir(path.dirname(icon.outputPath), { recursive: true });
+  await fs.writeFile(icon.outputPath, icon.svg, "utf8");
 
   console.log(
-    `Exported ${icon.name} -> ${path.relative(process.cwd(), outputPath)}`
+    `Exported ${icon.name} -> ${path.relative(
+      process.cwd(),
+      icon.outputPath
+    )}`
   );
 }
 
-console.log(`Export complete: ${icons.length} custom icon(s).`);
+console.log(`Export complete: ${validatedIcons.length} custom icon(s).`);
