@@ -88,6 +88,26 @@ async function figmaRequest(url) {
   return response;
 }
 
+async function findFiles(directory, extension) {
+  const entries = await fs.readdir(directory, {
+    withFileTypes: true,
+  });
+
+  const files = [];
+
+  for (const entry of entries) {
+    const fullPath = path.join(directory, entry.name);
+
+    if (entry.isDirectory()) {
+      files.push(...(await findFiles(fullPath, extension)));
+    } else if (entry.isFile() && entry.name.endsWith(extension)) {
+      files.push(fullPath);
+    }
+  }
+
+  return files;
+}
+
 console.log(`Reading Figma file ${fileKey}...`);
 
 const fileResponse = await figmaRequest(
@@ -122,6 +142,30 @@ const icons = discoveredComponents.map((component) => ({
   ...component,
   pathParts: validateIconName(component.name),
 }));
+
+const expectedSvgPaths = new Set(
+  icons.map((icon) =>
+    path.resolve(
+      outputRoot,
+      ...icon.pathParts.slice(0, -1),
+      `${icon.pathParts.at(-1)}.svg`
+    )
+  )
+);
+
+const existingSvgPaths = await findFiles(outputRoot, ".svg");
+  for (const existingPath of existingSvgPaths) {
+    if (!expectedSvgPaths.has(path.resolve(existingPath))) {
+      await fs.unlink(existingPath);
+
+      console.log(
+        `Removed stale icon -> ${path.relative(
+          process.cwd(),
+          existingPath
+        )}`
+      );
+    }
+  }
 
 const duplicateNames = icons
   .map((icon) => icon.name)

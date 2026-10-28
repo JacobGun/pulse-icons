@@ -21,6 +21,26 @@ async function findSvgFiles(directory) {
   return files;
 }
 
+async function findGeneratedJsFiles(directory) {
+  const entries = await fs.readdir(directory, {
+    withFileTypes: true,
+  });
+
+  const files = [];
+
+  for (const entry of entries) {
+    const fullPath = path.join(directory, entry.name);
+
+    if (entry.isDirectory()) {
+      files.push(...(await findGeneratedJsFiles(fullPath)));
+    } else if (entry.isFile() && entry.name.endsWith(".js")) {
+      files.push(fullPath);
+    }
+  }
+
+  return files;
+}
+
 function extractSvgData(svg, sourcePath) {
   const viewBoxMatch = svg.match(/viewBox="([^"]+)"/);
   const pathMatches = [...svg.matchAll(/<path[^>]*\sd="([^"]+)"/g)];
@@ -51,6 +71,30 @@ const svgFiles = await findSvgFiles(inputRoot);
 
 if (svgFiles.length === 0) {
   throw new Error("No custom SVG icons were found.");
+}
+
+const expectedModulePaths = new Set(
+  svgFiles.map((svgPath) => {
+    const relativeSvgPath = path.relative(inputRoot, svgPath);
+    const relativeModulePath = relativeSvgPath.replace(/\.svg$/i, ".js");
+
+    return path.resolve(outputRoot, relativeModulePath);
+  })
+);
+
+const existingModulePaths = await findGeneratedJsFiles(outputRoot);
+
+for (const existingPath of existingModulePaths) {
+  if (!expectedModulePaths.has(path.resolve(existingPath))) {
+    await fs.unlink(existingPath);
+
+    console.log(
+      `Removed stale Web module -> ${path.relative(
+        process.cwd(),
+        existingPath
+      )}`
+    );
+  }
 }
 
 console.log(`Found ${svgFiles.length} custom SVG icon(s):`);
